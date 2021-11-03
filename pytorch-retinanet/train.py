@@ -7,6 +7,9 @@ import torch
 import torch.optim as optim
 from torchvision import transforms
 
+from torch.utils.tensorboard import SummaryWriter
+
+
 from retinanet import model
 from retinanet.dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBasedSampler, Augmenter, \
     Normalizer
@@ -73,6 +76,9 @@ def main(args=None):
         sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
         dataloader_val = DataLoader(dataset_val, num_workers=3, collate_fn=collater, batch_sampler=sampler_val)
 
+    # Activate Tensorboard
+    writer_root = '../results/training_results'
+    writer = SummaryWriter(writer_root)
     # Create the model
     if parser.depth == 18:
         retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
@@ -119,7 +125,6 @@ def main(args=None):
         epoch_loss = []
 
         for iter_num, data in enumerate(dataloader_train):
-            print(data['annot'])
             try:
                 optimizer.zero_grad()
 
@@ -132,6 +137,10 @@ def main(args=None):
                 regression_loss = regression_loss.mean()
 
                 loss = classification_loss + regression_loss
+                
+                writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_num+1)
+                writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_num+1)
+                writer.add_scalar('Train_Loss/Iteration', loss, iter_num+1)
 
                 if bool(loss == 0):
                     continue
@@ -167,14 +176,17 @@ def main(args=None):
             print('Evaluating dataset')
 
             mAP = csv_eval.evaluate(dataset_val, retinanet)
-
+            writer.add_scalar('Evaluation mAP/Epoch', mAP, epoch_num+1)
         scheduler.step(np.mean(epoch_loss))
+        
+        writer.add_scalar('Train_Loss/Epoch', loss, epoch_num+1)
 
         torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
 
     retinanet.eval()
 
     torch.save(retinanet, 'model_final.pt')
+    writer.close()
 
 
 if __name__ == '__main__':

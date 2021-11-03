@@ -6,6 +6,8 @@ This repo is an implementation of RetinaNet using pytorch adapted from the follo
 
 pip install mmcv
 pip install tqdm
+pip install torchvision
+pip install scikit-image
 
 ##  Data pre-processing
 The code handles the use of the UAV123 dataset. The dataset can be downloaded at the following [link](https://cemse.kaust.edu.sa/ivul/uav123).
