@@ -117,6 +117,8 @@ def main(args=None):
 
     print('Num training images: {}'.format(len(dataset_train)))
 
+    iter_global = 0
+
     for epoch_num in range(parser.epochs):
 
         retinanet.train()
@@ -138,9 +140,9 @@ def main(args=None):
 
                 loss = classification_loss + regression_loss
                 
-                writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_num+1)
-                writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_num+1)
-                writer.add_scalar('Train_Loss/Iteration', loss, iter_num+1)
+                writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
+                writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
+                writer.add_scalar('Train_Loss/Iteration', loss, iter_global+1)
 
                 if bool(loss == 0):
                     continue
@@ -164,6 +166,7 @@ def main(args=None):
             except Exception as e:
                 print(e)
                 continue
+            iter_global+=1
 
         if parser.dataset == 'coco':
 
@@ -176,12 +179,24 @@ def main(args=None):
             print('Evaluating dataset')
 
             mAP = csv_eval.evaluate(dataset_val, retinanet)
-            writer.add_scalar('Evaluation mAP/Epoch', mAP, epoch_num+1)
+
+            #writer.add_scalar('Evaluation bike mAP/Epoch', mAP[0], epoch_num+1)
+            #writer.add_scalar('Evaluation bird mAP/Epoch', mAP[1], epoch_num+1)
+            #writer.add_scalar('Evaluation boat mAP/Epoch', mAP[2], epoch_num+1)
+            #writer.add_scalar('Evaluation building mAP/Epoch', mAP[3], epoch_num+1)
+            #writer.add_scalar('Evaluation car mAP/Epoch', mAP[4], epoch_num+1)
+            #writer.add_scalar('Evaluation group mAP/Epoch', mAP[5], epoch_num+1)
+            #writer.add_scalar('Evaluation person mAP/Epoch', mAP[6], epoch_num+1)
+            #writer.add_scalar('Evaluation truck mAP/Epoch', mAP[7], epoch_num+1)
+            #writer.add_scalar('Evaluation uav mAP/Epoch', mAP[8], epoch_num+1)
+            #writer.add_scalar('Evaluation wakeboard mAP/Epoch', mAP[9], epoch_num+1)
         scheduler.step(np.mean(epoch_loss))
         
         writer.add_scalar('Train_Loss/Epoch', loss, epoch_num+1)
 
-        torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+        # Save checkpoints
+        if epoch_num%10 == 0:
+            torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
 
     retinanet.eval()
 

@@ -36,6 +36,8 @@ def main():
 
 
     df = pd.read_csv(anno_to_split_path, names=['path', 'x1','x2', 'y1', 'y2', 'label'])
+    n_rows = 100
+    df = df.iloc[::n_rows, :]
 
 
     evaluation_df = pd.DataFrame(columns=['path', 'x1','x2', 'y1', 'y2', 'label'])

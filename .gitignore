@@ -9,6 +9,7 @@ bin-release/
 data-preprocessing/ipynb_checkpoints/
 uav123_anno/
 results/
+pytorch-retinanet/retinanet/__pycache__/
 
 
 # Executables
@@ -16,6 +17,10 @@ results/
 *.air
 *.ipa
 *.apk
+
+# Models
+*.pt
+*.pyc
 
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`
 # should NOT be excluded as they contain compiler settings and other important
