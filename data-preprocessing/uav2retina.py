@@ -34,7 +34,11 @@ def convert_uav123(uav123, ann_dir, save_dir):
     """
     # The format of each line in "uav_info123.txt" is
     # "anno_name,anno_path,video_path,start_frame,end_frame"
+<<<<<<< HEAD
     info_path = osp.join(os.path.abspath(''), 'data-preprocessing/UAV123/uav123_info.txt')
+=======
+    info_path = osp.join(os.path.abspath(''), 'UAV123/uav123_info.txt')
+>>>>>>> e0cd17aba03d779e636a21f917eec70c222d9ccd
     uav_info = mmcv.list_from_file(info_path)[1:]
 
     records = dict(vid_id=1, img_id=1, ann_id=1, global_instance_id=1)
@@ -71,8 +75,11 @@ def convert_uav123(uav123, ann_dir, save_dir):
                     range(start_frame, end_frame + 1)):
                 file_name = osp.join(video_name, '%06d.jpg' % (src_frame_id))
 
+<<<<<<< HEAD
                 img_path = ann_dir + '/data_seq/UAV123/' + file_name
 
+=======
+>>>>>>> e0cd17aba03d779e636a21f917eec70c222d9ccd
                 if 'NaN' in gt_bboxes[frame_id]:
                     x1 = y1 = x2 = y2 = 0
                     label = ''
@@ -82,6 +89,7 @@ def convert_uav123(uav123, ann_dir, save_dir):
                     y2 = int(y1) + int(h)
                     label = re.findall(labels_cond, video_name)[0]
                 
+<<<<<<< HEAD
                 if x1==0 and y1==0 and x2==0 and y2==0:
                     csv_file.write(img_path + ',' + ','.join(['','','', '']) + ',' + '' + '\n')
                 else:
@@ -89,6 +97,11 @@ def convert_uav123(uav123, ann_dir, save_dir):
                     
 
                 
+=======
+                csv_file.write(file_name + ',' + ','.join([str(x1),str(y1),str(x2), str(y2)]) + ',' + label + '\n')
+
+                break
+>>>>>>> e0cd17aba03d779e636a21f917eec70c222d9ccd
 
 
     print('New RetinaNet annotations saved at :' + save_dir)
