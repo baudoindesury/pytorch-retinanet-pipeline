@@ -18,6 +18,11 @@ from torch.utils.data import DataLoader
 from retinanet import coco_eval
 from retinanet import csv_eval
 
+# Inmport superpoint
+from retinanet.networks.superpoint_pytorch import SuperPointFrontend
+from retinanet.losses import *
+
+
 assert torch.__version__.split('.')[0] == '1'
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
@@ -58,6 +63,7 @@ def main(args=None):
 
         dataset_train = CSVDataset(train_file=parser.csv_train, class_list=parser.csv_classes,
                                    transform=transforms.Compose([Normalizer(), Augmenter(), Resizer()]))
+        print(dataset_train)
 
         if parser.csv_val is None:
             dataset_val = None
@@ -79,6 +85,7 @@ def main(args=None):
     # Activate Tensorboard
     writer_root = '../results/training_results'
     writer = SummaryWriter(writer_root)
+
     # Create the model
     if parser.depth == 18:
         retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
@@ -104,6 +111,10 @@ def main(args=None):
     else:
         retinanet = torch.nn.DataParallel(retinanet)
 
+    # Load pre-trained SuperPoint teacher model
+    superpoint = SuperPointFrontend(project_root='') #Modify project_root
+
+
     retinanet.training = True
 
     optimizer = optim.Adam(retinanet.parameters(), lr=1e-5)
@@ -114,6 +125,8 @@ def main(args=None):
 
     retinanet.train()
     retinanet.module.freeze_bn()
+
+
 
     print('Num training images: {}'.format(len(dataset_train)))
 
@@ -127,45 +140,63 @@ def main(args=None):
         epoch_loss = []
 
         for iter_num, data in enumerate(dataloader_train):
-            try:
-                optimizer.zero_grad()
+            #try:
+            optimizer.zero_grad()
 
-                if torch.cuda.is_available():
-                    classification_loss, regression_loss = retinanet([data['img'].cuda().float(), data['annot']])
-                else:
-                    classification_loss, regression_loss = retinanet([data['img'].float(), data['annot']])
-                    
-                classification_loss = classification_loss.mean()
-                regression_loss = regression_loss.mean()
+            # Forward pass
+            if torch.cuda.is_available():
+                output = retinanet([data['img'].cuda().float(), data['annot']])
+            else:
+                output = retinanet([data['img'].float(), data['annot']])
+            
+            # Focal loss of retinanet
+            classification_loss, regression_loss = output['focalLoss'][0], output['focalLoss'][1]
+            
+            # SuperPoint output Tensors
+            output_desc = output['desc'].type(torch.FloatTensor)#.to(device)
+            output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
 
-                loss = classification_loss + regression_loss
-                
-                writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
-                writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
-                writer.add_scalar('Train_Loss/Iteration', loss, iter_global+1)
+            print("compute superpoint output")
+            # SuperPoint label with teacher model
+            output_superpoint = superpoint.run(data['img_gray'])
+            desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
+            dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
+            
+            # Compute SuperPoint Losses
+            desc_l_t = descriptor_local_loss(output_desc, desc_teacher)
+            detc_l_t = detector_loss(output_semi, dect_teacher)
 
-                if bool(loss == 0):
-                    continue
+            classification_loss = classification_loss.mean()
+            regression_loss = regression_loss.mean()
 
-                loss.backward()
+            loss = classification_loss + regression_loss
+            
+            writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
+            writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
+            writer.add_scalar('Train_Loss/Iteration', loss, iter_global+1)
 
-                torch.nn.utils.clip_grad_norm_(retinanet.parameters(), 0.1)
-
-                optimizer.step()
-
-                loss_hist.append(float(loss))
-
-                epoch_loss.append(float(loss))
-
-                print(
-                    'Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(
-                        epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
-
-                del classification_loss
-                del regression_loss
-            except Exception as e:
-                print(e)
+            if bool(loss == 0):
                 continue
+
+            loss.backward()
+
+            torch.nn.utils.clip_grad_norm_(retinanet.parameters(), 0.1)
+
+            optimizer.step()
+
+            loss_hist.append(float(loss))
+
+            epoch_loss.append(float(loss))
+
+            print(
+                'Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(
+                    epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
+
+            del classification_loss
+            del regression_loss
+            #except Exception as e:
+            #    print('Exception : ', e)
+            #    continue
             iter_global+=1
 
         if parser.dataset == 'coco':
@@ -203,6 +234,11 @@ def main(args=None):
     torch.save(retinanet, 'model_final.pt')
     writer.close()
 
+import matplotlib.pyplot as plt
+def plot(img, fig = 0):
+    plt.figure(fig)
+    plt.imshow(img) 
+    plt.show()  # display it
 
 if __name__ == '__main__':
     main()

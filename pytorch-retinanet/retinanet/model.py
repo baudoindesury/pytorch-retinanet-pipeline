@@ -7,6 +7,10 @@ from retinanet.utils import BasicBlock, Bottleneck, BBoxTransform, ClipBoxes
 from retinanet.anchors import Anchors
 from retinanet import losses
 
+# Import superpoint
+from retinanet.networks.SuperPointNet_detector_head import SuperPointNet_Detector
+from retinanet.networks.SuperPointNet_descriptor_head import SuperPointNet_Descriptor
+
 model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
@@ -175,7 +179,14 @@ class ResNet(nn.Module):
         else:
             raise ValueError(f"Block type {block} not understood")
 
+
         self.fpn = PyramidFeatures(fpn_sizes[0], fpn_sizes[1], fpn_sizes[2])
+
+        # Init 2 superpoint heads
+        input_size = 512 # To be determined
+        self.detector = SuperPointNet_Detector(input_size)
+        self.descriptor = SuperPointNet_Descriptor(input_size)
+        # Initialiaze weights ?
 
         self.regressionModel = RegressionModel(256)
         self.classificationModel = ClassificationModel(256, num_classes=num_classes)
@@ -246,6 +257,17 @@ class ResNet(nn.Module):
         x4 = self.layer4(x3)
 
         # Plug superpoint heads here
+        print('forward superpoint')
+        print('x2 size = ' ,x2.size())
+        print('x3 size = ' ,x3.size())
+        print('x4 size = ' ,x4.size())
+        x_multi =  x2# Input of superpoint
+        out_semi = self.detector(x_multi)
+        out_desc = self.descriptor(x_multi)
+
+        dn = torch.norm(out_desc, p=2, dim=1)  #Compute L2 Norm
+        out_desc = out_desc.div(torch.unsqueeze(dn,1))
+        print('forward superpoint done')
 
         features = self.fpn([x2, x3, x4])
 
@@ -256,7 +278,13 @@ class ResNet(nn.Module):
         anchors = self.anchors(img_batch)
 
         if self.training:
-            return self.focalLoss(classification, regression, anchors, annotations)
+            output = {'focalLoss': self.focalLoss(classification, regression, anchors, annotations),
+                      'semi': out_semi,
+                      'desc': out_desc
+                      }
+            print('return output')
+            return output
+            # self.focalLoss(classification, regression, anchors, annotations)
         else:
             transformed_anchors = self.regressBoxes(anchors, regression)
             transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)

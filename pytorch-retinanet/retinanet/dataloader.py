@@ -19,6 +19,7 @@ import skimage
 
 from PIL import Image
 
+import cv2
 
 class CocoDataset(Dataset):
     """Coco dataset."""
@@ -207,6 +208,14 @@ class CSVDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
 
+        # convert img RGB to gray scale for superpoint
+        image_gray = cv2.cvtColor(sample['img'].numpy(), cv2.COLOR_RGB2GRAY)
+        image_gray = image_gray.astype('float64') / 255
+        assert len(image_gray.shape) == 2
+        image_gray = torch.from_numpy(image_gray)
+        image_gray = image_gray.unsqueeze(0)
+        sample['img_gray'] = image_gray.permute(1,2,0)
+
         return sample
 
     def load_image(self, image_index):
@@ -301,6 +310,7 @@ class CSVDataset(Dataset):
 def collater(data):
 
     imgs = [s['img'] for s in data]
+    imgs_gray = [s['img_gray'] for s in data]
     annots = [s['annot'] for s in data]
     scales = [s['scale'] for s in data]
         
@@ -312,10 +322,13 @@ def collater(data):
     max_height = np.array(heights).max()
 
     padded_imgs = torch.zeros(batch_size, max_width, max_height, 3)
+    padded_imgs_gray = torch.zeros(batch_size, max_width, max_height, 1)
 
     for i in range(batch_size):
         img = imgs[i]
+        img_gray = imgs_gray[i]
         padded_imgs[i, :int(img.shape[0]), :int(img.shape[1]), :] = img
+        padded_imgs_gray[i, :int(img_gray.shape[0]), :int(img_gray.shape[1]), :] = img_gray
 
     max_num_annots = max(annot.shape[0] for annot in annots)
     
@@ -333,8 +346,10 @@ def collater(data):
 
 
     padded_imgs = padded_imgs.permute(0, 3, 1, 2)
+    # check
+    padded_imgs_gray = padded_imgs_gray.permute(0, 3, 1, 2)
 
-    return {'img': padded_imgs, 'annot': annot_padded, 'scale': scales}
+    return {'img': padded_imgs, 'img_gray': padded_imgs_gray, 'annot': annot_padded, 'scale': scales}
 
 class Resizer(object):
     """Convert ndarrays in sample to Tensors."""
@@ -367,6 +382,7 @@ class Resizer(object):
         new_image[:rows, :cols, :] = image.astype(np.float32)
 
         annots[:, :4] *= scale
+
 
         return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
 

@@ -1,5 +1,7 @@
 import numpy as np
 import torch
+from torch.nn import *
+from torch.nn import functional as F
 import torch.nn as nn
 
 def calc_iou(a, b):
@@ -175,3 +177,12 @@ class FocalLoss(nn.Module):
         return torch.stack(classification_losses).mean(dim=0, keepdim=True), torch.stack(regression_losses).mean(dim=0, keepdim=True)
 
 
+def descriptor_local_loss(output_desc, desc_teacher):
+    criterion_desc_soft = MSELoss()
+    desc_l = criterion_desc_soft(output_desc, desc_teacher)
+    return desc_l
+
+def detector_loss(output_semi, dect_teacher):
+    criterion_dect_soft = BCELoss()
+    detc_l = criterion_dect_soft(F.softmax(output_semi, dim=1), dect_teacher)
+    return detc_l
