@@ -156,7 +156,6 @@ def main(args=None):
             output_desc = output['desc'].type(torch.FloatTensor)#.to(device)
             output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
 
-            print("compute superpoint output")
             # SuperPoint label with teacher model
             output_superpoint = superpoint.run(data['img_gray'])
             desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
@@ -166,10 +165,14 @@ def main(args=None):
             desc_l_t = descriptor_local_loss(output_desc, desc_teacher)
             detc_l_t = detector_loss(output_semi, dect_teacher)
 
+            # Compute RetinaNet Losses
             classification_loss = classification_loss.mean()
             regression_loss = regression_loss.mean()
-
-            loss = classification_loss + regression_loss
+            
+            # Compute total loss
+            loss_retina = classification_loss + regression_loss
+            loss_superpoint = desc_l_t + detc_l_t
+            loss = loss_retina + loss_superpoint
             
             writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
             writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
@@ -189,15 +192,24 @@ def main(args=None):
             epoch_loss.append(float(loss))
 
             print(
-                'Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(
-                    epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
-
+                'Epoch: {} | Iteration: {}'.format(epoch_num, iter_num))
+            print(
+                'RetinaNet | Classification loss: {:1.5f} | Regression loss: {:1.5f}'.format(
+                    float(classification_loss), float(regression_loss)))
+            print(
+                'SuperPoint | Detector loss: {:1.5f} | Descriptor loss: {:1.5f}'.format(
+                    float(detc_l_t), float(desc_l_t)))
+            print('Running Loss: {:1.5f}'.format(np.mean(loss_hist)))
+            
             del classification_loss
             del regression_loss
+            del desc_l_t
+            del detc_l_t
             #except Exception as e:
             #    print('Exception : ', e)
             #    continue
             iter_global+=1
+            
 
         if parser.dataset == 'coco':
 

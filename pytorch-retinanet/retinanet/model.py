@@ -257,17 +257,12 @@ class ResNet(nn.Module):
         x4 = self.layer4(x3)
 
         # Plug superpoint heads here
-        print('forward superpoint')
-        print('x2 size = ' ,x2.size())
-        print('x3 size = ' ,x3.size())
-        print('x4 size = ' ,x4.size())
         x_multi =  x2# Input of superpoint
         out_semi = self.detector(x_multi)
         out_desc = self.descriptor(x_multi)
 
         dn = torch.norm(out_desc, p=2, dim=1)  #Compute L2 Norm
         out_desc = out_desc.div(torch.unsqueeze(dn,1))
-        print('forward superpoint done')
 
         features = self.fpn([x2, x3, x4])
 
@@ -282,7 +277,6 @@ class ResNet(nn.Module):
                       'semi': out_semi,
                       'desc': out_desc
                       }
-            print('return output')
             return output
             # self.focalLoss(classification, regression, anchors, annotations)
         else:
