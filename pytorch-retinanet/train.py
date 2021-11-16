@@ -40,6 +40,8 @@ def main(args=None):
     parser.add_argument('--depth', help='Resnet depth, must be one of 18, 34, 50, 101, 152', type=int, default=50)
     parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
 
+    parser.add_argument('--model_path', help='model path to resume training', default = None)
+
     parser = parser.parse_args(args)
 
     # Create the data loaders
@@ -157,6 +159,7 @@ def main(args=None):
             output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
 
             # SuperPoint label with teacher model
+            print('image gray :', data['img_gray'].size())
             output_superpoint = superpoint.run(data['img_gray'])
             desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
             dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
@@ -176,7 +179,10 @@ def main(args=None):
             
             writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
             writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
+            writer.add_scalar('Train_SuperPoint_Descriptor/Iteration', desc_l_t, iter_global+1)
+            writer.add_scalar('Train_SuperPoint_Detector/Iteration', detc_l_t, iter_global+1)
             writer.add_scalar('Train_Loss/Iteration', loss, iter_global+1)
+            
 
             if bool(loss == 0):
                 continue
@@ -199,7 +205,7 @@ def main(args=None):
             print(
                 'SuperPoint | Detector loss: {:1.5f} | Descriptor loss: {:1.5f}'.format(
                     float(detc_l_t), float(desc_l_t)))
-            print('Running Loss: {:1.5f}'.format(np.mean(loss_hist)))
+            print('Running Loss: {:1.5f}\n'.format(np.mean(loss_hist)))
             
             del classification_loss
             del regression_loss
@@ -221,7 +227,10 @@ def main(args=None):
 
             print('Evaluating dataset')
 
-            mAP = csv_eval.evaluate(dataset_val, retinanet)
+            mAP, losses = csv_eval.evaluate(dataset_val, retinanet, superpoint)
+
+            #writer.add_scalar('Eval_RetinaLoss/Epoch', losses['loss_retina'], epoch_num+1)
+            writer.add_scalar('Eval_SuperpointLoss/Epoch', losses['loss_superpoint'], epoch_num+1)
 
             #writer.add_scalar('Evaluation bike mAP/Epoch', mAP[0], epoch_num+1)
             #writer.add_scalar('Evaluation bird mAP/Epoch', mAP[1], epoch_num+1)
@@ -235,15 +244,16 @@ def main(args=None):
             #writer.add_scalar('Evaluation wakeboard mAP/Epoch', mAP[9], epoch_num+1)
         scheduler.step(np.mean(epoch_loss))
         
+
         writer.add_scalar('Train_Loss/Epoch', loss, epoch_num+1)
 
         # Save checkpoints
         if epoch_num%10 == 0:
-            torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+            torch.save(retinanet.module, 'checkpoints/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
 
     retinanet.eval()
 
-    torch.save(retinanet, 'model_final.pt')
+    torch.save(retinanet, 'checkpoints/model_final.pt')
     writer.close()
 
 import matplotlib.pyplot as plt

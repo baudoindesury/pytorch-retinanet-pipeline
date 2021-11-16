@@ -6,6 +6,11 @@ import os
 import matplotlib.pyplot as plt
 import torch
 
+# Inmport superpoint
+from retinanet.networks.superpoint_pytorch import SuperPointFrontend
+from retinanet.losses import *
+
+
 
 
 def compute_overlap(a, b):
@@ -62,7 +67,7 @@ def _compute_ap(recall, precision):
     return ap
 
 
-def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100, save_path=None):
+def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_detections=100, save_path=None):
     """ Get the detections from the retinanet using the generator.
     The result is a list of lists such that the size is:
         all_detections[num_images][num_classes] = detections[num_detections, 4 + num_classes]
@@ -87,12 +92,37 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
 
             # run network
             if torch.cuda.is_available():
-                scores, labels, boxes = retinanet(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+                scores, labels, boxes, output = retinanet(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
             else:
-                scores, labels, boxes = retinanet(data['img'].permute(2, 0, 1).float().unsqueeze(dim=0))
+                scores, labels, boxes, output = retinanet(data['img'].permute(2, 0, 1).float().unsqueeze(dim=0))
             scores = scores.cpu().numpy()
             labels = labels.cpu().numpy()
             boxes  = boxes.cpu().numpy()
+
+            # SuperPoint output Tensors
+            output_desc = output['desc'].type(torch.FloatTensor)#.to(device)
+            output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
+
+            # SuperPoint label with teacher model
+            output_superpoint = superpoint.run(data['img_gray'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+            desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
+            dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
+            
+            # Compute SuperPoint Losses
+            desc_l = descriptor_local_loss(output_desc, desc_teacher)
+            detc_l = detector_loss(output_semi, dect_teacher)
+            
+            # Retina Losses
+            #classification_loss, regression_loss = output['focalLoss'][0], output['focalLoss'][1] 
+            #classification_loss = classification_loss.mean()
+            #regression_loss = regression_loss.mean()
+            
+            # Compute total loss
+            #loss_retina = classification_loss + regression_loss
+            loss_superpoint = desc_l + detc_l
+            #loss = loss_retina + loss_superpoint
+
+            losses = {'loss_superpoint': loss_superpoint} #, 'loss_retina': loss_retina, 'total_loss': loss}
 
             # correct boxes for image scale
             boxes /= scale
@@ -122,7 +152,7 @@ def _get_detections(dataset, retinanet, score_threshold=0.05, max_detections=100
 
             print('{}/{}'.format(index + 1, len(dataset)), end='\r')
 
-    return all_detections
+    return all_detections, losses
 
 
 def _get_annotations(generator):
@@ -152,6 +182,7 @@ def _get_annotations(generator):
 def evaluate(
     generator,
     retinanet,
+    superpoint,
     iou_threshold=0.5,
     score_threshold=0.05,
     max_detections=100,
@@ -173,7 +204,7 @@ def evaluate(
 
     # gather all detections and annotations
 
-    all_detections     = _get_detections(generator, retinanet, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
+    all_detections, losses     = _get_detections(generator, retinanet, superpoint, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
     all_annotations    = _get_annotations(generator)
 
     average_precisions = {}
@@ -239,8 +270,8 @@ def evaluate(
         print('{}: {}'.format(label_name, average_precisions[label][0]))
         #print("Precision: ",precision[-1])
         #print("Recall: ",recall[-1])
-        print("Precision: ",precision[-1])
-        print("Recall: ",recall[-1])
+        #print("Precision: ",precision[-1])
+        #print("Recall: ",recall[-1])
         
         if save_path!=None:
             plt.plot(recall,precision)
@@ -257,5 +288,5 @@ def evaluate(
 
 
 
-    return average_precisions
+    return average_precisions, losses
 

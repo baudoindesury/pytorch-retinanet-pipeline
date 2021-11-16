@@ -274,12 +274,16 @@ class ResNet(nn.Module):
 
         if self.training:
             output = {'focalLoss': self.focalLoss(classification, regression, anchors, annotations),
-                      'semi': out_semi,
-                      'desc': out_desc
-                      }
+            'semi': out_semi,
+            'desc': out_desc
+            }
             return output
             # self.focalLoss(classification, regression, anchors, annotations)
         else:
+            output = {
+                    'semi': out_semi,
+                    'desc': out_desc
+                    }
             transformed_anchors = self.regressBoxes(anchors, regression)
             transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
 
@@ -318,7 +322,7 @@ class ResNet(nn.Module):
                 finalAnchorBoxesIndexes = torch.cat((finalAnchorBoxesIndexes, finalAnchorBoxesIndexesValue))
                 finalAnchorBoxesCoordinates = torch.cat((finalAnchorBoxesCoordinates, anchorBoxes[anchors_nms_idx]))
 
-            return [finalScores, finalAnchorBoxesIndexes, finalAnchorBoxesCoordinates]
+            return finalScores, finalAnchorBoxesIndexes, finalAnchorBoxesCoordinates, output
 
 
 
