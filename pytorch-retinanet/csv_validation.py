@@ -6,6 +6,9 @@ from retinanet import model
 from retinanet.dataloader import CSVDataset, Resizer, Normalizer
 from retinanet import csv_eval
 
+# Inmport superpoint
+from retinanet.networks.superpoint_pytorch import SuperPointFrontend
+
 assert torch.__version__.split('.')[0] == '1'
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
@@ -39,12 +42,15 @@ def main(args=None):
     else:
         retinanet.load_state_dict(torch.load(parser.model_path))
         retinanet = torch.nn.DataParallel(retinanet)
-
+    
     retinanet.training = False
     retinanet.eval()
-    retinanet.module.freeze_bn()
+    #retinanet.module.freeze_bn()
 
-    print(csv_eval.evaluate(dataset_val, retinanet,iou_threshold=float(parser.iou_threshold)))
+    # Load pre-trained SuperPoint teacher model
+    superpoint = SuperPointFrontend(project_root='') #Modify project_root
+
+    output = csv_eval.evaluate(dataset_val, retinanet, superpoint, iou_threshold=float(parser.iou_threshold))
 
 
 

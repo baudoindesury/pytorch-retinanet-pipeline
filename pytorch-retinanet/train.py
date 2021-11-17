@@ -22,6 +22,8 @@ from retinanet import csv_eval
 from retinanet.networks.superpoint_pytorch import SuperPointFrontend
 from retinanet.losses import *
 
+from tqdm import tqdm
+
 
 assert torch.__version__.split('.')[0] == '1'
 
@@ -65,7 +67,6 @@ def main(args=None):
 
         dataset_train = CSVDataset(train_file=parser.csv_train, class_list=parser.csv_classes,
                                    transform=transforms.Compose([Normalizer(), Augmenter(), Resizer()]))
-        print(dataset_train)
 
         if parser.csv_val is None:
             dataset_val = None
@@ -134,14 +135,14 @@ def main(args=None):
 
     iter_global = 0
 
-    for epoch_num in range(parser.epochs):
+    for epoch_num in tqdm(range(parser.epochs)):
 
         retinanet.train()
         retinanet.module.freeze_bn()
 
         epoch_loss = []
 
-        for iter_num, data in enumerate(dataloader_train):
+        for iter_num, data in enumerate(tqdm(dataloader_train, leave=False)):
             #try:
             optimizer.zero_grad()
 
@@ -159,7 +160,6 @@ def main(args=None):
             output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
 
             # SuperPoint label with teacher model
-            print('image gray :', data['img_gray'].size())
             output_superpoint = superpoint.run(data['img_gray'])
             desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
             dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
@@ -196,17 +196,18 @@ def main(args=None):
             loss_hist.append(float(loss))
 
             epoch_loss.append(float(loss))
-
-            print(
-                'Epoch: {} | Iteration: {}'.format(epoch_num, iter_num))
-            print(
-                'RetinaNet | Classification loss: {:1.5f} | Regression loss: {:1.5f}'.format(
-                    float(classification_loss), float(regression_loss)))
-            print(
-                'SuperPoint | Detector loss: {:1.5f} | Descriptor loss: {:1.5f}'.format(
-                    float(detc_l_t), float(desc_l_t)))
-            print('Running Loss: {:1.5f}\n'.format(np.mean(loss_hist)))
             
+            if False:
+                print(
+                    '\nEpoch: {} | Iteration: {}'.format(epoch_num, iter_num))
+                print(
+                    'RetinaNet | Classification loss: {:1.5f} | Regression loss: {:1.5f}'.format(
+                        float(classification_loss), float(regression_loss)))
+                print(
+                    'SuperPoint | Detector loss: {:1.5f} | Descriptor loss: {:1.5f}'.format(
+                        float(detc_l_t), float(desc_l_t)))
+                print('Running Loss: {:1.5f}\n'.format(np.mean(loss_hist)))
+
             del classification_loss
             del regression_loss
             del desc_l_t
@@ -229,8 +230,9 @@ def main(args=None):
 
             mAP, losses = csv_eval.evaluate(dataset_val, retinanet, superpoint)
 
-            #writer.add_scalar('Eval_RetinaLoss/Epoch', losses['loss_retina'], epoch_num+1)
+            writer.add_scalar('Eval_RetinaLoss/Epoch', losses['loss_retina'], epoch_num+1)
             writer.add_scalar('Eval_SuperpointLoss/Epoch', losses['loss_superpoint'], epoch_num+1)
+            writer.add_scalar('Eval_TotalLoss/Epoch', losses['total_loss'], epoch_num+1)
 
             #writer.add_scalar('Evaluation bike mAP/Epoch', mAP[0], epoch_num+1)
             #writer.add_scalar('Evaluation bird mAP/Epoch', mAP[1], epoch_num+1)

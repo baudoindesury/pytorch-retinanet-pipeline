@@ -38,7 +38,7 @@ def main(args=None):
 	if parser.dataset == 'coco':
 		dataset_val = CocoDataset(parser.coco_path, set_name='train2017', transform=transforms.Compose([Normalizer(), Resizer()]))
 	elif parser.dataset == 'csv':
-		dataset_val = CSVDataset(train_file=parser.csv_train, class_list=parser.csv_classes, transform=transforms.Compose([Normalizer(), Resizer()]))
+		dataset_val = CSVDataset(train_file=parser.csv_val, class_list=parser.csv_classes, transform=transforms.Compose([Normalizer(), Resizer()]))
 	else:
 		raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
@@ -73,9 +73,9 @@ def main(args=None):
 		with torch.no_grad():
 			st = time.time()
 			if torch.cuda.is_available():
-				scores, classification, transformed_anchors = retinanet(data['img'].cuda().float())
+				scores, classification, transformed_anchors, _ = retinanet([data['img'].cuda().float(), data['annot']])
 			else:
-				scores, classification, transformed_anchors = retinanet(data['img'].float())
+				scores, classification, transformed_anchors, _ = retinanet([data['img'].float(), data['annot']])
 			print('Elapsed time: {}'.format(time.time()-st))
 			idxs = np.where(scores.cpu()>0.5)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
@@ -99,8 +99,8 @@ def main(args=None):
 				cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)
 				print(label_name)
 
-			cv2.imshow('img', img)
-			cv2.waitKey(0)
+			cv2.imwrite('/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/img' + str(idx) + '.jpg', img)
+			#cv2.waitKey(0)
 
 
 

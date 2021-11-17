@@ -92,9 +92,9 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
 
             # run network
             if torch.cuda.is_available():
-                scores, labels, boxes, output = retinanet(data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
+                scores, labels, boxes, output = retinanet([data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0), data['annot'].unsqueeze(dim=0)])
             else:
-                scores, labels, boxes, output = retinanet(data['img'].permute(2, 0, 1).float().unsqueeze(dim=0))
+                scores, labels, boxes, output = retinanet([data['img'].permute(2, 0, 1).float().unsqueeze(dim=0), data['annot'].unsqueeze(dim=0)])
             scores = scores.cpu().numpy()
             labels = labels.cpu().numpy()
             boxes  = boxes.cpu().numpy()
@@ -113,16 +113,16 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
             detc_l = detector_loss(output_semi, dect_teacher)
             
             # Retina Losses
-            #classification_loss, regression_loss = output['focalLoss'][0], output['focalLoss'][1] 
-            #classification_loss = classification_loss.mean()
-            #regression_loss = regression_loss.mean()
+            classification_loss, regression_loss = output['focalLoss'][0], output['focalLoss'][1] 
+            classification_loss = classification_loss.mean()
+            regression_loss = regression_loss.mean()
             
             # Compute total loss
-            #loss_retina = classification_loss + regression_loss
+            loss_retina = classification_loss + regression_loss
             loss_superpoint = desc_l + detc_l
-            #loss = loss_retina + loss_superpoint
+            loss = loss_retina + loss_superpoint
 
-            losses = {'loss_superpoint': loss_superpoint} #, 'loss_retina': loss_retina, 'total_loss': loss}
+            losses = {'loss_superpoint': loss_superpoint, 'loss_retina': loss_retina, 'total_loss': loss}
 
             # correct boxes for image scale
             boxes /= scale
