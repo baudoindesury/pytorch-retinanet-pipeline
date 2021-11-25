@@ -28,7 +28,12 @@ def main(args=None):
     dataset_val = CSVDataset(parser.csv_annotations_path,parser.class_list_path,transform=transforms.Compose([Normalizer(), Resizer()]))
     # Create the model
     #retinanet = model.resnet50(num_classes=dataset_val.num_classes(), pretrained=True)
+    
     retinanet=torch.load(parser.model_path)
+    
+    # Modify load checkpoints
+    #checkpoint = torch.load(parser.model_path)
+    #model.load_state_dict(checkpoint['net'])
 
     use_gpu = True
 
