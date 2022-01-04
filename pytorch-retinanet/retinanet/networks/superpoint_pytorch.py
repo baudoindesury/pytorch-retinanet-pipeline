@@ -69,8 +69,8 @@ class SuperPointFrontend():
         try:
             checkpoint = osp.join(project_root,'checkpoints','superpoint', 'superpoint_v1.pth')
         except:
-            checkpoint = '../../checkpoints/pretrained_pth/superpoint_v1.pth'
-        print('Load SuperPoint Pth from ', checkpoint)
+            checkpoint = 'checkpoints/pretrained_pth/superpoint_v1.pth'
+        print(project_root, 'Load SuperPoint Pth from ', checkpoint)
         self.net = SuperPointNet()
         self.net.load_state_dict(torch.load(checkpoint))
         self.net.eval()

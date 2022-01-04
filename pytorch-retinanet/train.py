@@ -1,5 +1,6 @@
 import argparse
 import collections
+import time
 
 import numpy as np
 
@@ -86,7 +87,8 @@ def main(args=None):
         dataloader_val = DataLoader(dataset_val, num_workers=3, collate_fn=collater, batch_sampler=sampler_val)
 
     # Activate Tensorboard
-    writer_root = '../results/training_results'
+    timestr = time.strftime("%Y%m%d-%H%M%S")
+    writer_root = '../results/training_results/' + timestr
     writer = SummaryWriter(writer_root)
 
     # Create the model
@@ -135,6 +137,7 @@ def main(args=None):
 
     iter_global = 0
     best_eval_loss = np.inf
+    
 
     for epoch_num in tqdm(range(parser.epochs)):
 
@@ -142,11 +145,9 @@ def main(args=None):
         retinanet.module.freeze_bn()
 
         epoch_loss = []
-
         for batch_idx, data in enumerate(tqdm(dataloader_train)):
             #try:
             optimizer.zero_grad()
-
             # Forward pass
             if torch.cuda.is_available():
                 output = retinanet([data['img'].cuda().float(), data['annot']])
@@ -161,9 +162,10 @@ def main(args=None):
             output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
 
             # SuperPoint label with teacher model
-            output_superpoint = superpoint.run(data['img_gray'])
-            desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
-            dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
+            with torch.no_grad():
+                output_superpoint = superpoint.run(data['img_gray'])
+                desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
+                dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
             
             # Compute SuperPoint Losses
             desc_l_t = descriptor_local_loss(output_desc, desc_teacher)
@@ -172,12 +174,12 @@ def main(args=None):
             # Compute RetinaNet Losses
             classification_loss = classification_loss.mean()
             regression_loss = regression_loss.mean()
-            
+
             # Compute total loss
             loss_retina = classification_loss + regression_loss
-            loss_superpoint = desc_l_t + detc_l_t
+            loss_superpoint = 100*desc_l_t + 1000*detc_l_t
             loss = loss_retina + loss_superpoint
-            
+
             writer.add_scalar('Train_Classification_Loss/Iteration', classification_loss, iter_global+1)
             writer.add_scalar('Train_Regression_Loss/Iteration', regression_loss, iter_global+1)
             writer.add_scalar('Train_SuperPoint_Descriptor/Iteration', desc_l_t, iter_global+1)
@@ -194,9 +196,9 @@ def main(args=None):
 
             optimizer.step()
 
-            loss_hist.append(float(loss))
-
-            epoch_loss.append(float(loss))
+            loss_hist.append(float(loss.item()))
+            
+            epoch_loss.append(float(loss.item()))
             
             if False:
                 print(
@@ -213,10 +215,13 @@ def main(args=None):
             del regression_loss
             del desc_l_t
             del detc_l_t
+            del loss_retina
+            del loss_superpoint
             #except Exception as e:
             #    print('Exception : ', e)
             #    continue
             iter_global+=1 
+            
 
         if parser.dataset == 'coco':
 
@@ -235,12 +240,12 @@ def main(args=None):
             writer.add_scalar('Eval_TotalLoss/Epoch', losses['total_loss'], epoch_num+1)
 
             if losses['total_loss'] < best_eval_loss and epoch_num >= 3:
-                torch.save(retinanet.module, 'checkpoints/{}_retinanet_best_model_epoch_{}.pt'.format(parser.dataset, epoch_num))
+                torch.save(retinanet.module, 'checkpoints/{}_retinanet_best_model.pt'.format(parser.dataset))
+                #torch.save(retinanet.module, 'checkpoints/' + timestr + '/{}_retinanet_best_model.pt'.format(parser.dataset))
                 best_eval_loss = losses['total_loss']
 
 
         scheduler.step(np.mean(epoch_loss))
-        
 
         writer.add_scalar('Train_Loss/Epoch', loss, epoch_num+1)
 
@@ -256,10 +261,12 @@ def main(args=None):
                 "scheduler": scheduler.state_dict()
             }
             torch.save(checkpoint, 'checkpoints/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))"""
-            torch.save(retinanet.module, 'checkpoints/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+            #torch.save(retinanet.module, 'checkpoints/' + timestr +'/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+            torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
 
     retinanet.eval()
 
+    #torch.save(retinanet, 'checkpoints/' + timestr +'/model_final_run.pt')
     torch.save(retinanet, 'checkpoints/model_final.pt')
     writer.close()
 

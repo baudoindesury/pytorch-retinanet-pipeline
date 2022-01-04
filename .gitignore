@@ -6,11 +6,12 @@ bin-release/
 
 # Other files and folders
 .settings/
+.vscode/
 data-preprocessing/ipynb_checkpoints/
 uav123_anno/
 results/
 pytorch-retinanet/retinanet/__pycache__/
-
+/pytorch-retinanet/output_images/
 
 # Executables
 *.swf
@@ -20,6 +21,7 @@ pytorch-retinanet/retinanet/__pycache__/
 
 # Models
 *.pt
+*.pth
 *.pyc
 
 # Project files, i.e. `.project`, `.actionScriptProperties` and `.flexProperties`

@@ -36,7 +36,7 @@ def main():
 
 
     df = pd.read_csv(anno_to_split_path, names=['path', 'x1','x2', 'y1', 'y2', 'label'])
-    n_rows = 100
+    n_rows = 10
     df = df.iloc[::n_rows, :]
 
 
@@ -45,8 +45,10 @@ def main():
         evaluation_df = pd.concat([evaluation_df,df[df['path'].str.contains(label)]])
         df = df.drop(df[df['path'].str.contains(label)].index)
 
-    evaluation_df.to_csv(output_path + '/evaluation_annotations.csv', header=False, index=False, float_format='%.0f', na_rep='')
-    df.to_csv(output_path + '/training_annotations.csv', header=False, index=False, float_format='%.0f', na_rep='')
+    evaluation_df.to_csv(output_path + '/evaluation_annotations_2.csv', header=False, index=False, float_format='%.0f', na_rep='')
+    df.to_csv(output_path + '/training_annotations_2.csv', header=False, index=False, float_format='%.0f', na_rep='')
+
+    print("Split annotations done and saved to : ", output_path)
 
 if __name__ == '__main__':
     main()
