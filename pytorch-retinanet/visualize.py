@@ -17,6 +17,13 @@ from torchvision import datasets, models, transforms
 from retinanet.dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBasedSampler, Augmenter, \
 	UnNormalizer, Normalizer
 
+# load checkpoint (to remove)
+from retinanet import model
+
+# GPU use
+import GPUtilext
+
+
 
 assert torch.__version__.split('.')[0] == '1'
 
@@ -32,6 +39,10 @@ def main(args=None):
 	parser.add_argument('--csv_val', help='Path to file containing validation annotations (optional, see readme)')
 
 	parser.add_argument('--model', help='Path to model (.pt) file.')
+	
+	parser.add_argument('--ground_truth', dest='ground_truth', action='store_true')
+	parser.add_argument('--no-ground_truth', dest='ground_truth', action='store_false')
+	parser.set_defaults(ground_truth=False)
 
 	parser = parser.parse_args(args)
 
@@ -44,8 +55,14 @@ def main(args=None):
 
 	sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
 	dataloader_val = DataLoader(dataset_val, num_workers=1, collate_fn=collater, batch_sampler=sampler_val)
-
-	retinanet = torch.load(parser.model)
+	
+	retinanet = model.resnet50(num_classes=dataset_val.num_classes(), pretrained=True)
+	retinanet = torch.nn.DataParallel(retinanet)
+    
+    # Modify load checkpoints
+	checkpoint = torch.load(parser.model)
+	retinanet.load_state_dict(checkpoint['model'])
+	#retinanet = torch.load(parser.model)
 
 	use_gpu = True
 
@@ -68,15 +85,27 @@ def main(args=None):
 		cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 2)
 		cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
 
-	for idx, data in enumerate(dataloader_val):
-
+	inference_times = []
+	for idx, data in enumerate(dataloader_val):		
 		with torch.no_grad():
 			st = time.time()
 			if torch.cuda.is_available():
-				scores, classification, transformed_anchors, _ = retinanet([data['img'].cuda().float(), data['annot']])
+				scores, classification, transformed_anchors, output = retinanet([data['img'].cuda().float(), data['annot']])
 			else:
-				scores, classification, transformed_anchors, _ = retinanet([data['img'].float(), data['annot']])
+				scores, classification, transformed_anchors, output = retinanet([data['img'].float(), data['annot']])
+		
+			inference_times.append(time.time()-st)
 			print('Elapsed time: {}'.format(time.time()-st))
+			attrlist = [[
+				{'attr': 'id', 'name': 'ID'},
+				{'attr': 'load', 'name': 'GPU util.', 'suffix': '%', 'transform': lambda x: x * 100, 'precision': 0},
+				{'attr': 'memoryUtil', 'name': 'Memory util.', 'suffix': '%', 'transform': lambda x: x * 100,
+				'precision': 0}],
+				[{'attr': 'memoryTotal', 'name': 'Memory total', 'suffix': 'MB', 'precision': 0},
+				{'attr': 'memoryUsed', 'name': 'Memory used', 'suffix': 'MB', 'precision': 0},
+				{'attr': 'memoryFree', 'name': 'Memory free', 'suffix': 'MB', 'precision': 0}]]
+			GPUtilext.showUtilization(attrList=attrlist)
+
 			idxs = np.where(scores.cpu()>0.5)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
 
@@ -87,6 +116,24 @@ def main(args=None):
 
 			img = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2RGB)
 
+			if parser.ground_truth == True:
+				for j in range(len(data['annot'][0])):
+					bbox = data['annot'][0][j][:4]
+					
+					if int(data['annot'][0][j][4]) == -1 :
+						continue
+
+					label_name = dataset_val.label_to_name(int(data['annot'][0][j][4]))
+					label_name = ''
+					x1 = int(bbox[0])
+					y1 = int(bbox[1])
+					x2 = int(bbox[2])
+					y2 = int(bbox[3])
+
+					draw_caption(img, (x1, y1, x2, y2), label_name)
+					cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=1)
+
+			
 			for j in range(idxs[0].shape[0]):
 				bbox = transformed_anchors[idxs[0][j], :]
 				x1 = int(bbox[0])
@@ -97,10 +144,11 @@ def main(args=None):
 				draw_caption(img, (x1, y1, x2, y2), label_name)
 
 				cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)
-				print(label_name)
-
+			
 			cv2.imwrite('/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/img' + str(idx) + '.jpg', img)
 			#cv2.waitKey(0)
+	print('Average inference time = ', np.mean(inference_times))
+
 
 
 

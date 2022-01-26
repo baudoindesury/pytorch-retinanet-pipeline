@@ -4,6 +4,7 @@ from torch import nn
 import os.path as osp
 from torch.nn import functional as F
 
+
 def np_softmax(x, axis=0):
     dense = np.exp(x)
     dense = dense / (np.sum(dense, axis=axis)+0.00001)

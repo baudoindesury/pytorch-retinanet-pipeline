@@ -8,6 +8,7 @@ import torch
 
 # Inmport superpoint
 from retinanet.networks.superpoint_pytorch import SuperPointFrontend
+from retinanet.networks.superpoint_utils import post_processing_superpoint_detector, plot_superpoint_keypoints
 from retinanet.losses import *
 
 
@@ -85,7 +86,7 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
     retinanet.eval()
     
     with torch.no_grad():
-
+    
         for index in range(len(dataset)):
             data = dataset[index]
             scale = data['scale']
@@ -102,12 +103,22 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
             # SuperPoint output Tensors
             output_desc = output['desc'].type(torch.FloatTensor)#.to(device)
             output_semi = output['semi'].type(torch.FloatTensor)#.to(device)
+            
+            # Post-processing superpoint detector
+            img_original = data['img_gray'].numpy()*255
+            H, W = img_original.shape[0], img_original.shape[1]
+            superpoint_keypoints,_ = post_processing_superpoint_detector(F.softmax(output_semi.squeeze(), dim=1), H, W)
+            #plot_superpoint_keypoints(img_original, pts, title='student')
 
             # SuperPoint label with teacher model
             output_superpoint = superpoint.run(data['img_gray'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0))
             desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
             dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
             
+            # Teacher Model - Post-processing superpoint detector
+            #pts,_ = post_processing_superpoint_detector(dect_teacher, H, W)
+            #plot_superpoint_keypoints(img_original, pts, title='teacher')
+
             # Compute SuperPoint Losses
             desc_l = descriptor_local_loss(output_desc, desc_teacher)
             detc_l = detector_loss(output_semi, dect_teacher)
@@ -152,7 +163,7 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
 
             print('{}/{}'.format(index + 1, len(dataset)), end='\r')
 
-    return all_detections, losses
+    return all_detections, losses, superpoint_keypoints
 
 
 def _get_annotations(generator):
@@ -179,6 +190,21 @@ def _get_annotations(generator):
     return all_annotations
 
 
+def layer_to_img(semi):
+    semi = semi.squeeze()[1:].unsqueeze(0)
+    print(semi.size())
+    pixel_shuffle = torch.nn.PixelShuffle(8)
+    output = pixel_shuffle(semi)
+    print('img shape')
+    print(output.size())
+
+    return output.squeeze()
+
+import cv2
+def draw_keypoints(img, corners, color):
+    keypoints = [cv2.KeyPoint(c[1], c[0], 1) for c in np.stack(corners).T]
+    return cv2.drawKeypoints(img.astype(np.uint8), keypoints, None, color=color)
+
 def evaluate(
     generator,
     retinanet,
@@ -204,7 +230,7 @@ def evaluate(
 
     # gather all detections and annotations
 
-    all_detections, losses     = _get_detections(generator, retinanet, superpoint, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
+    all_detections, losses, superpoint_keypoints     = _get_detections(generator, retinanet, superpoint, score_threshold=score_threshold, max_detections=max_detections, save_path=save_path)
     all_annotations    = _get_annotations(generator)
 
     average_precisions = {}
@@ -290,3 +316,56 @@ def evaluate(
 
     return average_precisions, losses
 
+
+"""
+def post_processing_superpoint_detector(semi, H, W):
+    
+    cell = 8
+    border_remove = 4
+    conf_thresh = 0.015
+
+    # --- Process points.
+    dense = semi.squeeze().numpy()
+    
+    #dense = np.exp(semi) # Softmax.
+    dense = dense / (np.sum(dense, axis=0)+.00001) # Should sum to 1.
+    # Remove dustbin.
+    nodust = dense[:-1, :, :]
+    # Reshape to get full resolution heatmap.
+    Hc = int(H / cell)
+    Wc = int(W / cell)
+    nodust = nodust.transpose(1, 2, 0)
+    heatmap = np.reshape(nodust, [Hc, Wc, cell, cell])
+    heatmap = np.transpose(heatmap, [0, 2, 1, 3])
+    heatmap = np.reshape(heatmap, [Hc*cell, Wc*cell])
+    xs, ys = np.where(heatmap >= conf_thresh) # Confidence threshold.
+    if len(xs) == 0:
+      return np.zeros((3, 0))
+    pts = np.zeros((3, len(xs))) # Populate point data sized 3xN.
+    pts[0, :] = ys
+    pts[1, :] = xs
+    pts[2, :] = heatmap[xs, ys]
+    #pts, _ = nms_fast(pts, H, W, dist_thresh=nms_dist) # Apply NMS.
+    inds = np.argsort(pts[2,:])
+    pts = pts[:,inds[::-1]] # Sort by confidence.
+    # Remove points along border.
+    bord = border_remove
+    toremoveW = np.logical_or(pts[0, :] < bord, pts[0, :] >= (W-bord))
+    toremoveH = np.logical_or(pts[1, :] < bord, pts[1, :] >= (H-bord))
+    toremove = np.logical_or(toremoveW, toremoveH)
+    pts = pts[:, ~toremove]
+
+    return pts
+
+
+def plot_superpoint_keypoints(img_gray, pts, title='keypoints'):
+    out2 = (np.dstack((img_gray, img_gray, img_gray)) * 255.).astype('uint8')
+    for pt in pts.T:
+        pt1 = (int(round(pt[0])), int(round(pt[1])))
+        cv2.circle(out2, pt1, 3, (0, 255, 0), -1, lineType=16)
+        
+    plt.figure(figsize=(16,8))
+    plt.imshow(out2)
+    plt.savefig(title + '.jpeg')
+    plt.show()
+"""

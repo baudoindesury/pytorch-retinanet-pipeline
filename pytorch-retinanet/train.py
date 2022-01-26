@@ -1,6 +1,7 @@
 import argparse
 import collections
 import time
+import os
 
 import numpy as np
 
@@ -43,7 +44,7 @@ def main(args=None):
     parser.add_argument('--depth', help='Resnet depth, must be one of 18, 34, 50, 101, 152', type=int, default=50)
     parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
 
-    parser.add_argument('--model_path', help='model path to resume training', default = None)
+    parser.add_argument('--model', help='model path to resume training', default = None)
 
     parser = parser.parse_args(args)
 
@@ -91,6 +92,10 @@ def main(args=None):
     writer_root = '../results/training_results/' + timestr
     writer = SummaryWriter(writer_root)
 
+    checkpoints_root = writer_root + '/checkpoints/'
+    if not os.path.exists(checkpoints_root):
+        os.makedirs(checkpoints_root)
+
     # Create the model
     if parser.depth == 18:
         retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
@@ -128,18 +133,28 @@ def main(args=None):
 
     loss_hist = collections.deque(maxlen=500)
 
+    EPOCH_NUM = 0
+    iter_global = 0
+    best_eval_mAP = 0
+    if parser.model is not None:
+        checkpoint = torch.load(parser.model)
+        retinanet.load_state_dict(checkpoint['model'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        scheduler.load_state_dict(checkpoint['scheduler'])
+        EPOCH_NUM = checkpoint['epoch']
+        loss = checkpoint['loss'] #check assignation of loss
+        iter_global = checkpoint['iter_global']
+
     retinanet.train()
     retinanet.module.freeze_bn()
 
-
-
     print('Num training images: {}'.format(len(dataset_train)))
 
-    iter_global = 0
-    best_eval_loss = np.inf
+    #iter_global = 0
+    #best_eval_loss = np.inf
     
 
-    for epoch_num in tqdm(range(parser.epochs)):
+    for epoch_num in tqdm(range(EPOCH_NUM, parser.epochs)):
 
         retinanet.train()
         retinanet.module.freeze_bn()
@@ -234,40 +249,41 @@ def main(args=None):
             print('Evaluating dataset')
 
             mAP, losses = csv_eval.evaluate(dataset_val, retinanet, superpoint)
+            eval_mAP = np.mean([res[0] for res in mAP.values()])
 
             writer.add_scalar('Eval_RetinaLoss/Epoch', losses['loss_retina'], epoch_num+1)
             writer.add_scalar('Eval_SuperpointLoss/Epoch', losses['loss_superpoint'], epoch_num+1)
             writer.add_scalar('Eval_TotalLoss/Epoch', losses['total_loss'], epoch_num+1)
 
-            if losses['total_loss'] < best_eval_loss and epoch_num >= 3:
-                torch.save(retinanet.module, 'checkpoints/{}_retinanet_best_model.pt'.format(parser.dataset))
-                #torch.save(retinanet.module, 'checkpoints/' + timestr + '/{}_retinanet_best_model.pt'.format(parser.dataset))
-                best_eval_loss = losses['total_loss']
-
+            if  eval_mAP > best_eval_mAP: 
+                print('Saving best model')
+                torch.save({
+                    'epoch': epoch_num,
+                    'model': retinanet.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'scheduler': scheduler.state_dict(),
+                    'loss': loss,
+                    'iter_global': iter_global,
+                }, checkpoints_root + 'best_model_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+                best_eval_loss = eval_mAP
 
         scheduler.step(np.mean(epoch_loss))
 
         writer.add_scalar('Train_Loss/Epoch', loss, epoch_num+1)
 
         # Save checkpoints
-        if epoch_num%10 == 0:
-            # Modify save checkpoints
-            """checkpoint = {
-                "net": model.state_dict(),
+
+        if epoch_num%2 == 0 or epoch_num == parser.epochs - 1:
+            torch.save({
+                'epoch': epoch_num,
+                'model': retinanet.state_dict(),
                 'optimizer': optimizer.state_dict(),
-                "epoch": epoch_num,
-                "loss": loss,
-                "iters": batch_idx,
-                "scheduler": scheduler.state_dict()
-            }
-            torch.save(checkpoint, 'checkpoints/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))"""
-            #torch.save(retinanet.module, 'checkpoints/' + timestr +'/{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
-            torch.save(retinanet.module, '{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
-
+                'scheduler': scheduler.state_dict(),
+                'loss': loss,
+                'iter_global': iter_global,
+            }, checkpoints_root + 'checkpoint_{}_retinanet_{}.pt'.format(parser.dataset, epoch_num))
+        
     retinanet.eval()
-
-    #torch.save(retinanet, 'checkpoints/' + timestr +'/model_final_run.pt')
-    torch.save(retinanet, 'checkpoints/model_final.pt')
     writer.close()
 
 import matplotlib.pyplot as plt

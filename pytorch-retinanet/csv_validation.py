@@ -26,14 +26,15 @@ def main(args=None):
 
     #dataset_val = CocoDataset(parser.coco_path, set_name='val2017',transform=transforms.Compose([Normalizer(), Resizer()]))
     dataset_val = CSVDataset(parser.csv_annotations_path,parser.class_list_path,transform=transforms.Compose([Normalizer(), Resizer()]))
-    # Create the model
-    #retinanet = model.resnet50(num_classes=dataset_val.num_classes(), pretrained=True)
     
-    retinanet=torch.load(parser.model_path)
+    #TODO Save checkpoints without Dataparallel
+    # Create the model
+    retinanet = model.resnet50(num_classes=dataset_val.num_classes(), pretrained=True)
+    retinanet = torch.nn.DataParallel(retinanet)
     
     # Modify load checkpoints
-    #checkpoint = torch.load(parser.model_path)
-    #model.load_state_dict(checkpoint['net'])
+    checkpoint = torch.load(parser.model_path)
+    retinanet.load_state_dict(checkpoint['model'])
 
     use_gpu = True
 
