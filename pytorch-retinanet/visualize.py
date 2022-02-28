@@ -11,11 +11,14 @@ import sys
 import cv2
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, models, transforms
 
 from retinanet.dataloader import CocoDataset, CSVDataset, collater, Resizer, AspectRatioBasedSampler, Augmenter, \
 	UnNormalizer, Normalizer
+from retinanet.networks.superpoint_utils import post_processing_superpoint_detector, plot_superpoint_keypoints
+
 
 # load checkpoint (to remove)
 from retinanet import model
@@ -43,6 +46,9 @@ def main(args=None):
 	parser.add_argument('--ground_truth', dest='ground_truth', action='store_true')
 	parser.add_argument('--no-ground_truth', dest='ground_truth', action='store_false')
 	parser.set_defaults(ground_truth=False)
+
+	parser.add_argument('--superpoint', help ='If flag set, save superpoint visualisations', default= False)
+	parser.add_argument('--output_path', help = 'Output path to save visualisations', default = 'output_images/')
 
 	parser = parser.parse_args(args)
 
@@ -79,12 +85,7 @@ def main(args=None):
 
 	unnormalize = UnNormalizer()
 
-	def draw_caption(image, box, caption):
-
-		b = np.array(box).astype(int)
-		cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 2)
-		cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
-
+	GPU_infos = False
 	inference_times = []
 	for idx, data in enumerate(dataloader_val):		
 		with torch.no_grad():
@@ -96,22 +97,25 @@ def main(args=None):
 		
 			inference_times.append(time.time()-st)
 			print('Elapsed time: {}'.format(time.time()-st))
-			attrlist = [[
-				{'attr': 'id', 'name': 'ID'},
-				{'attr': 'load', 'name': 'GPU util.', 'suffix': '%', 'transform': lambda x: x * 100, 'precision': 0},
-				{'attr': 'memoryUtil', 'name': 'Memory util.', 'suffix': '%', 'transform': lambda x: x * 100,
-				'precision': 0}],
-				[{'attr': 'memoryTotal', 'name': 'Memory total', 'suffix': 'MB', 'precision': 0},
-				{'attr': 'memoryUsed', 'name': 'Memory used', 'suffix': 'MB', 'precision': 0},
-				{'attr': 'memoryFree', 'name': 'Memory free', 'suffix': 'MB', 'precision': 0}]]
-			GPUtilext.showUtilization(attrList=attrlist)
+			if GPU_infos :
+				GPUtilext.showUtilization()
+
+			if parser.superpoint :
+				# SuperPoint output Tensors
+				output_desc = output['desc'].type(torch.FloatTensor)
+				output_semi = output['semi'].type(torch.FloatTensor)
+
+				img_gray = np.squeeze(data['img_gray'].numpy()*255)
+				H, W = img_gray.shape[0], img_gray.shape[1]
+				superpoint_keypoints, heatmap= post_processing_superpoint_detector(F.softmax(output_semi.squeeze(), dim=1), H, W)
+				print(np.shape(heatmap))
+				output_path = '/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/superpoint_' + str(idx)
+				plot_superpoint_keypoints(img_gray, superpoint_keypoints, title=output_path)
 
 			idxs = np.where(scores.cpu()>0.5)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
-
 			img[img<0] = 0
 			img[img>255] = 255
-
 			img = np.transpose(img, (1, 2, 0))
 
 			img = cv2.cvtColor(img.astype(np.uint8), cv2.COLOR_BGR2RGB)
@@ -150,6 +154,11 @@ def main(args=None):
 	print('Average inference time = ', np.mean(inference_times))
 
 
+def draw_caption(image, box, caption):
+	b = np.array(box).astype(int)
+	cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 2)
+	cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
+	
 
 
 if __name__ == '__main__':

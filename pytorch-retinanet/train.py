@@ -160,6 +160,7 @@ def main(args=None):
         retinanet.module.freeze_bn()
 
         epoch_loss = []
+        inference_times = []
         for batch_idx, data in enumerate(tqdm(dataloader_train)):
             #try:
             optimizer.zero_grad()
@@ -178,9 +179,13 @@ def main(args=None):
 
             # SuperPoint label with teacher model
             with torch.no_grad():
+                #st = time.time()
                 output_superpoint = superpoint.run(data['img_gray'])
                 desc_teacher = torch.from_numpy(output_superpoint['local_descriptor_map']).type(torch.FloatTensor)#.to(device)
                 dect_teacher = torch.from_numpy(output_superpoint['dense_scores']).type(torch.FloatTensor)#.to(device)
+                #inference_times.append(time.time()-st)
+                #print('Elapsed time: {}'.format(time.time()-st))
+                #print('Average superpoint time = ', np.mean(inference_times))
             
             # Compute SuperPoint Losses
             desc_l_t = descriptor_local_loss(output_desc, desc_teacher)

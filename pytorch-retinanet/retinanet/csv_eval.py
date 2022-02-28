@@ -5,6 +5,7 @@ import json
 import os
 import matplotlib.pyplot as plt
 import torch
+import torch.nn.functional as F
 
 # Inmport superpoint
 from retinanet.networks.superpoint_pytorch import SuperPointFrontend
@@ -311,8 +312,8 @@ def evaluate(
 
             # function to show the plot
             plt.savefig(save_path+'/'+label_name+'_precision_recall.jpg')
-
-
+    saving_path = '/home/baudoin/pytorch-retinanet-pipeline/results/retinanet_eval_data/'
+    np.save(saving_path + 'model_mix_tuned',average_precisions)
 
     return average_precisions, losses
 

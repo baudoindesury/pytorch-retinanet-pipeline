@@ -229,6 +229,15 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                             [{'attr':'display_mode','name':'Display mode'},
                              {'attr':'display_active','name':'Display active'}]]
 
+                attrlist = [[
+                            {'attr': 'id', 'name': 'ID'},
+                            {'attr': 'load', 'name': 'GPU util.', 'suffix': '%', 'transform': lambda x: x * 100, 'precision': 0},
+                            {'attr': 'memoryUtil', 'name': 'Memory util.', 'suffix': '%', 'transform': lambda x: x * 100,
+                            'precision': 0}],
+                            [{'attr': 'memoryTotal', 'name': 'Memory total', 'suffix': 'MB', 'precision': 0},
+                            {'attr': 'memoryUsed', 'name': 'Memory used', 'suffix': 'MB', 'precision': 0},
+                            {'attr': 'memoryFree', 'name': 'Memory free', 'suffix': 'MB', 'precision': 0}]]
+
         else:
             if (useOldCode):
                 print(' ID  GPU  MEM')
