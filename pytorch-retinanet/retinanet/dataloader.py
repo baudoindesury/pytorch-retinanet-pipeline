@@ -127,7 +127,7 @@ class CocoDataset(Dataset):
 class CSVDataset(Dataset):
     """CSV dataset."""
 
-    def __init__(self, train_file, class_list, transform=None):
+    def __init__(self, train_file, class_list, transform=None, read_score=False):
         """
         Args:
             train_file (string): CSV file with training annotations
@@ -137,6 +137,8 @@ class CSVDataset(Dataset):
         self.train_file = train_file
         self.class_list = class_list
         self.transform = transform
+        
+        self.read_score = read_score
 
         # parse the provided class file
         try:
@@ -229,7 +231,10 @@ class CSVDataset(Dataset):
     def load_annotations(self, image_index):
         # get ground truth annotations
         annotation_list = self.image_data[self.image_names[image_index]]
-        annotations     = np.zeros((0, 5))
+        if self.read_score:
+            annotations     = np.zeros((0, 6))
+        else:
+            annotations     = np.zeros((0, 5))
 
         # some images appear to miss annotations (like image with id 257034)
         if len(annotation_list) == 0:
@@ -245,15 +250,18 @@ class CSVDataset(Dataset):
 
             if (x2-x1) < 1 or (y2-y1) < 1:
                 continue
-
-            annotation        = np.zeros((1, 5))
+            if self.read_score:
+                annotation        = np.zeros((1, 6))
+                annotation[0, 4] = a['score']
+            else:
+                annotation        = np.zeros((1, 5))
             
             annotation[0, 0] = x1
             annotation[0, 1] = y1
             annotation[0, 2] = x2
             annotation[0, 3] = y2
-
-            annotation[0, 4]  = self.name_to_label(a['class'])
+            annotation[0, -1]  = self.name_to_label(a['class'])
+            
             annotations       = np.append(annotations, annotation, axis=0)
 
         return annotations
@@ -264,7 +272,10 @@ class CSVDataset(Dataset):
             line += 1
 
             try:
-                img_file, x1, y1, x2, y2, class_name = row[:6]
+                if not self.read_score:
+                    img_file, x1, y1, x2, y2, class_name = row[:6]
+                else:
+                    img_file, x1, y1, x2, y2, score, class_name  = row[:7]
             except ValueError:
                 raise_from(ValueError('line {}: format should be \'img_file,x1,y1,x2,y2,class_name\' or \'img_file,,,,,\''.format(line)), None)
 
@@ -289,8 +300,11 @@ class CSVDataset(Dataset):
             # check if the current class name is correctly present
             if class_name not in classes:
                 raise ValueError('line {}: unknown class name: \'{}\' (classes: {})'.format(line, class_name, classes))
-
-            result[img_file].append({'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2, 'class': class_name})
+            
+            res = {'x1': x1, 'x2': x2, 'y1': y1, 'y2': y2, 'class': class_name}
+            if self.read_score:
+                res['score'] = score
+            result[img_file].append(res)
         return result
 
     def name_to_label(self, name):
@@ -354,7 +368,7 @@ def collater(data):
 class Resizer(object):
     """Convert ndarrays in sample to Tensors."""
 
-    def __call__(self, sample, min_side=608, max_side=1024):
+    def __call__(self,sample, resize=True, min_side=608, max_side=1024):
         image, annots = sample['img'], sample['annot']
 
         rows, cols, cns = image.shape
@@ -375,6 +389,7 @@ class Resizer(object):
         image = skimage.transform.resize(image, (int(round(rows*scale)), int(round((cols*scale)))))
         rows, cols, cns = image.shape
 
+
         pad_w = 32 - rows%32
         pad_h = 32 - cols%32
 
@@ -382,7 +397,6 @@ class Resizer(object):
         new_image[:rows, :cols, :] = image.astype(np.float32)
 
         annots[:, :4] *= scale
-
 
         return {'img': torch.from_numpy(new_image), 'annot': torch.from_numpy(annots), 'scale': scale}
 

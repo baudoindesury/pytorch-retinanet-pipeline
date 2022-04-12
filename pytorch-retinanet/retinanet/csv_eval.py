@@ -91,7 +91,6 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
         for index in range(len(dataset)):
             data = dataset[index]
             scale = data['scale']
-
             # run network
             if torch.cuda.is_available():
                 scores, labels, boxes, output = retinanet([data['img'].permute(2, 0, 1).cuda().float().unsqueeze(dim=0), data['annot'].unsqueeze(dim=0)])
@@ -100,6 +99,8 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
             scores = scores.cpu().numpy()
             labels = labels.cpu().numpy()
             boxes  = boxes.cpu().numpy()
+
+            
 
             # SuperPoint output Tensors
             output_desc = output['desc'].type(torch.FloatTensor)#.to(device)
@@ -141,6 +142,7 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
 
             # select indices which have a score above the threshold
             indices = np.where(scores > score_threshold)[0]
+            #print('indices = ', indices.shape)
             if indices.shape[0] > 0:
                 # select those scores
                 scores = scores[indices]
@@ -167,7 +169,7 @@ def _get_detections(dataset, retinanet, superpoint, score_threshold=0.05, max_de
     return all_detections, losses, superpoint_keypoints
 
 
-def _get_annotations(generator):
+def _get_annotations(generator, return_img_names = False):
     """ Get the ground truth annotations from the generator.
     The result is a list of lists such that the size is:
         all_detections[num_images][num_classes] = annotations[num_detections, 5]
@@ -180,25 +182,24 @@ def _get_annotations(generator):
 
     for i in range(len(generator)):
         # load the annotations
-        annotations = generator.load_annotations(i)
+        annotations = generator.load_annotations(i) 
 
         # copy detections to all_annotations
         for label in range(generator.num_classes()):
-            all_annotations[i][label] = annotations[annotations[:, 4] == label, :4].copy()
+            all_annotations[i][label] = annotations[annotations[:, -1] == label, :-1].copy()
 
         print('{}/{}'.format(i + 1, len(generator)), end='\r')
+
+    if return_img_names:
+        return all_annotations, generator.image_names
 
     return all_annotations
 
 
 def layer_to_img(semi):
     semi = semi.squeeze()[1:].unsqueeze(0)
-    print(semi.size())
     pixel_shuffle = torch.nn.PixelShuffle(8)
     output = pixel_shuffle(semi)
-    print('img shape')
-    print(output.size())
-
     return output.squeeze()
 
 import cv2
@@ -241,14 +242,14 @@ def evaluate(
         true_positives  = np.zeros((0,))
         scores          = np.zeros((0,))
         num_annotations = 0.0
-
         for i in range(len(generator)):
             detections           = all_detections[i][label]
             annotations          = all_annotations[i][label]
             num_annotations     += annotations.shape[0]
             detected_annotations = []
-
+            #print('len d =',len(detections))
             for d in detections:
+                
                 scores = np.append(scores, d[4])
 
                 if annotations.shape[0] == 0:
@@ -279,6 +280,8 @@ def evaluate(
         true_positives  = true_positives[indices]
 
         # compute false positives and true positives
+        #print('TP = ',true_positives)
+        #print('n_anno = ', num_annotations)
         false_positives = np.cumsum(false_positives)
         true_positives  = np.cumsum(true_positives)
 
@@ -294,7 +297,7 @@ def evaluate(
     print('\nmAP:')
     for label in range(generator.num_classes()):
         label_name = generator.label_to_name(label)
-        print('{}: {}'.format(label_name, average_precisions[label][0]))
+        print('{} ({} instances): {}'.format(label_name, int(average_precisions[label][1]), average_precisions[label][0])) 
         #print("Precision: ",precision[-1])
         #print("Recall: ",recall[-1])
         #print("Precision: ",precision[-1])
@@ -302,18 +305,13 @@ def evaluate(
         
         if save_path!=None:
             plt.plot(recall,precision)
-            # naming the x axis 
             plt.xlabel('Recall') 
-            # naming the y axis 
             plt.ylabel('Precision') 
-
-            # giving a title to my graph 
             plt.title('Precision Recall curve') 
-
-            # function to show the plot
             plt.savefig(save_path+'/'+label_name+'_precision_recall.jpg')
-    saving_path = '/home/baudoin/pytorch-retinanet-pipeline/results/retinanet_eval_data/'
-    np.save(saving_path + 'model_mix_tuned',average_precisions)
+
+    #saving_path = '/home/baudoin/pytorch-retinanet-pipeline/results/retinanet_eval_data/'
+    #np.save(saving_path + 'model_mix_tuned',average_precisions)
 
     return average_precisions, losses
 

@@ -50,7 +50,8 @@ def main(args=None):
     parser.add_argument('--no-ground_truth', dest='ground_truth', action='store_false')
     parser.set_defaults(ground_truth=False)
 
-    parser.add_argument('--superpoint', help ='If flag set, save superpoint visualisations', default= False)
+    parser.add_argument('--superpoint', dest='ground_truth', action='store_true')
+    parser.set_defaults(superpoint=False)
     parser.add_argument('--output_path', help = 'Output path to save visualisations', default = 'output_images/')
 
     parser = parser.parse_args(args)
@@ -87,14 +88,14 @@ def main(args=None):
     avg_loc_error_list = []
     tp, fp, prob, matches, n_gt = [], [], [], [], 0
 
-    COMPUTE_PR = True
-    COMPUTE_REP_LE = False
-    PLOT_KEYPOINTS = False
-    SAVE_DATA = True
+    COMPUTE_PR = False
+    COMPUTE_REP_LE = True
+    PLOT_KEYPOINTS = True
+    SAVE_DATA = False
     suffix = '_synthetic_teacher_old_model'
 
-    threashold_student = [0.05, 0.06, 0.07, 0.08, 0.1, 0.12,0.14, 0.15, 0.16, 0.17, 0.18, 0.19]#[0.11]#[0.08, 0.09, 0.1, 0.105, 0.11, 0.115, 0.12, 0.13, 0.14, 0.15, 0.16]
-    threashold_teacher = [0.015]#np.linspace(0.005, 0.05,15) #[0.015, 0.016]
+    threashold_student = [0.16]#[0.05, 0.06, 0.07, 0.08, 0.1, 0.12,0.14, 0.15, 0.16, 0.17, 0.18, 0.19]#[0.11]#[0.08, 0.09, 0.1, 0.105, 0.11, 0.115, 0.12, 0.13, 0.14, 0.15, 0.16]
+    threashold_teacher = [0.015] #np.linspace(0.005, 0.05,15) #[0.015, 0.016]
 
     for idx, data in enumerate(tqdm(dataloader_val)):
         with torch.no_grad():
@@ -139,13 +140,13 @@ def main(args=None):
                         n_gt+=n
                     
                     if COMPUTE_REP_LE:
-                        repeatability, localization_err = compute_repeatability(data_keypoints, distance_thresh=3, keep_k_points=50)
+                        repeatability, localization_err = compute_repeatability(data_keypoints, distance_thresh=3, keep_k_points=1000)
                         repeatibility_list.append(repeatability)
                         loc_error_list.append(localization_err)
 
                     if PLOT_KEYPOINTS :
                         img = img_gray
-                        suffix = 'mix_model'
+                        suffix = 'superpoint'
                         save_path = '/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/img_' + suffix + '_' + str(idx) + '.jpeg'
                         plot_images(img, img, data_keypoints, save_path)
 

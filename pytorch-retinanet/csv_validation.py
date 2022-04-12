@@ -1,6 +1,7 @@
 import argparse
 import torch
 from torchvision import transforms
+import numpy as np
 
 from retinanet import model
 from retinanet.dataloader import CSVDataset, Resizer, Normalizer
@@ -56,7 +57,11 @@ def main(args=None):
     # Load pre-trained SuperPoint teacher model
     superpoint = SuperPointFrontend(project_root='') #Modify project_root
 
-    output = csv_eval.evaluate(dataset_val, retinanet, superpoint, iou_threshold=float(parser.iou_threshold))
+    average_precisions, _ = csv_eval.evaluate(dataset_val, retinanet, superpoint, iou_threshold=float(parser.iou_threshold))
+    average_precisions = np.array([list(ele) for ele in average_precisions.values()])
+    mAP = np.sum(average_precisions[:,0] * average_precisions[:,1]) / np.sum(average_precisions[:,1])
+    print('average mAP = ', mAP)
+
 
 
 

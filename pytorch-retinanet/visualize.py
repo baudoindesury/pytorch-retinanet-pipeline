@@ -94,7 +94,6 @@ def main(args=None):
 				scores, classification, transformed_anchors, output = retinanet([data['img'].cuda().float(), data['annot']])
 			else:
 				scores, classification, transformed_anchors, output = retinanet([data['img'].float(), data['annot']])
-		
 			inference_times.append(time.time()-st)
 			print('Elapsed time: {}'.format(time.time()-st))
 			if GPU_infos :
@@ -108,11 +107,10 @@ def main(args=None):
 				img_gray = np.squeeze(data['img_gray'].numpy()*255)
 				H, W = img_gray.shape[0], img_gray.shape[1]
 				superpoint_keypoints, heatmap= post_processing_superpoint_detector(F.softmax(output_semi.squeeze(), dim=1), H, W)
-				print(np.shape(heatmap))
 				output_path = '/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/superpoint_' + str(idx)
 				plot_superpoint_keypoints(img_gray, superpoint_keypoints, title=output_path)
 
-			idxs = np.where(scores.cpu()>0.5)
+			idxs = np.where(scores.cpu()>0.8)
 			img = np.array(255 * unnormalize(data['img'][0, :, :, :])).copy()
 			img[img<0] = 0
 			img[img>255] = 255
@@ -134,7 +132,7 @@ def main(args=None):
 					x2 = int(bbox[2])
 					y2 = int(bbox[3])
 
-					draw_caption(img, (x1, y1, x2, y2), label_name)
+					#draw_caption(img, (x1, y1, x2, y2), label_name)
 					cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=1)
 
 			
@@ -145,13 +143,13 @@ def main(args=None):
 				x2 = int(bbox[2])
 				y2 = int(bbox[3])
 				label_name = dataset_val.labels[int(classification[idxs[0][j]])]
-				draw_caption(img, (x1, y1, x2, y2), label_name)
+				#draw_caption(img, (x1, y1, x2, y2), label_name)
 
 				cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)
-			
 			cv2.imwrite('/home/baudoin/pytorch-retinanet-pipeline/pytorch-retinanet/output_images/img' + str(idx) + '.jpg', img)
 			#cv2.waitKey(0)
 	print('Average inference time = ', np.mean(inference_times))
+	print('std = ', np.std(inference_times))
 
 
 def draw_caption(image, box, caption):
